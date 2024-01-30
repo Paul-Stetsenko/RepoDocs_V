@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# chmod +x Dorado_script_m6Anet_docker_SdStr_v3.sh
-# sed -i -e 's/\r$//' Dorado_script_m6Anet_docker_SdStr_v3.sh
-# ./Dorado_script_m6Anet_docker_SdStr_v3.sh /media/localarchive/m6A-P2S-Arraystar/10min-A
-
 exec >> "$1"/logfile_$(date +%F).log 2>&1
 # Start time for Launching script
 start=$(date +%s)
@@ -17,11 +13,14 @@ setname="${basecalled_dirs##*/}"
 #ifolder=$(ls $basecalled_dirs)
 path_to_fast5_pass=$(find $basecalled_dirs -name "fast5_pass" -type d)
 path_to_fastq_pass=$(find $basecalled_dirs -name "fastq_pass" -type d)
-Reference_Genome="/media/localarchive/transcriptome_ref"
+Reference_Genome="/data/Referenced_Genome"
+mount_dir="/data"
+cores=30
 # Find the summary_file with the specified pattern
 summary_file=$(find $basecalled_dirs -type f -name "sequencing_summary_*.txt")
 if the summary_file is foundif [ -z "$summary_file" ]; then
-    echo "No summary_file found with the specified pattern"    exit 1
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: No summary_file found with the specified pattern"
+    exit 1
 fi
 # Output the found summary_file pathecho "Found summary_file: $summary_file"
 # Example of how to use the summary_file path in a subsequent command
@@ -39,30 +38,30 @@ fi
 				ssummary_txt=$summary_file	
                
                 if [[ -n "${fastq_pass_result}" ]]; then
-                    echo "Found 'fastq_pass' folder at: ${fastq_pass_result}"
-                    echo -e "${BGreen}Unzipping fastq"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') Found 'fastq_pass' folder at: ${fastq_pass_result}"
+                    echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Unzipping fastq"
                     for f in $fastq_pass_result/*.gz ; do sudo gzip -d "$f" ; done
-                    echo -e "${BGreen}Done"
+                    echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Done"
                 fi
 
         mkdir $basecalled_dirs/processing_nanopolish
         mkdir $basecalled_dirs/processing_m6anet
         mkdir $basecalled_dirs/processing_m6anet/output_dataprep
         mkdir $basecalled_dirs/processing_m6anet/output_m6anet
-        echo -e "${BGreen} gather fastq_s in single fastq file"
+        echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Gathering fastq_s in single fastq file"
         cat $fastq_pass_result/*.fastq > $basecalled_dirs/processing_nanopolish/single_fastq_$setname.fastq 
         # find $fastq_pass_result -name "*.fastq" -type f -exec cat {} + > $basecalled_dirs/processing_nanopolish/single_fastq_$setname.fastq
-		echo -e "${BGreen} Launching nanopolish indexing"
-        echo -e "Found 'sequencing_summary.txt' file at: ${ssummary_txt}"
-        echo -e "Found 'fast5_pass' folder at: ${path_to_fast5_pass}"
+		echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Launching nanopolish indexing"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S') Found 'sequencing_summary.txt' file at: ${ssummary_txt}"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S') Found 'fast5_pass' folder at: ${path_to_fast5_pass}"
         # nanopolish info https://bioconda.github.io/recipes/nanopolish/README.html
         # new_path="${path#/*/}"
-		# /media/localarchive:/localarchive
+		# /data/localarchive:/localarchive
 		sudo docker pull quay.io/biocontainers/nanopolish:0.14.0--h773013f_3
-        sudo docker run --rm -v /media:/media quay.io/biocontainers/nanopolish:0.14.0--h773013f_3 nanopolish index \
+        sudo docker run --rm -v /data:/data quay.io/biocontainers/nanopolish:0.14.0--h773013f_3 nanopolish index \
         -d $path_to_fast5_pass $basecalled_dirs/processing_nanopolish/single_fastq_$setname.fastq \
         -s $ssummary_txt
-        echo -e "${BGreen} Launching minimap2 with splice -k14"
+        echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Launching minimap2 with splice -k14"
         start_map=$(date +%s)
 		minimap2 -ax splice -uf -k14 $Reference_Genome/Homo_sapiens.GRCh38.cdna.all.fa $basecalled_dirs/processing_nanopolish/single_fastq_$setname.fastq | samtools sort -T tmp -o $basecalled_dirs/processing_nanopolish/output_sorted_$setname.bam
         end_map=$(date +%s)
@@ -71,10 +70,10 @@ fi
 		end_samindex=$(date +%s)
         
 		
-		echo -e "all aligned:"
+		echo -e "$(date '+%Y-%m-%d %H:%M:%S') all aligned:"
         count_all_reads_to_Gene="samtools view -c $basecalled_dirs/processing_nanopolish/output_sorted_$setname.bam"
 		all_gcount=$(eval "$count_all_reads_to_Gene")
-        echo -e "successfully aligned:"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')successfully aligned:"
         count_mapped_reads_to_Gene="samtools view -F 4 -c $basecalled_dirs/processing_nanopolish/output_sorted_$setname.bam" #successfully aligned
         mapped_gcount=$(eval "$count_mapped_reads_to_Gene")
        	# Convert gcount to an integer
@@ -89,31 +88,31 @@ fi
             echo -e "!!!!!!!!! Warning: The sucsessful_mapped reads less or equal 54% => $ratio_sucsessful_mapped%" 
         fi
 		
-		echo -e "${BGreen} Launching nanopolish eventalign"
+		echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Launching nanopolish eventalign"
 		start_eventalign=$(date +%s)
-        sudo docker run --rm -v /media:/media quay.io/biocontainers/nanopolish:0.14.0--h773013f_3 nanopolish eventalign \
+        sudo docker run --rm -v $mount_dir:$mount_dir quay.io/biocontainers/nanopolish:0.14.0--h773013f_3 nanopolish eventalign \
         --reads $basecalled_dirs/processing_nanopolish/single_fastq_$setname.fastq \
         --bam $basecalled_dirs/processing_nanopolish/output_sorted_$setname.bam \
         --genome $Reference_Genome/Homo_sapiens.GRCh38.cdna.all.fa \
 		--signal-index \
-        -t 10 \
+        -t $cores \
         --scale-events > $basecalled_dirs/processing_nanopolish/eventalign.txt
         end_eventalign=$(date +%s)
 		### m6Anet ###
-        echo -e "${BGreen} Launching docker of m6Anet"
+        echo -e "${BGreen} $(date '+%Y-%m-%d %H:%M:%S') Launching docker of m6Anet"
 		start_m6Anet_dataprep=$(date +%s)
         sudo docker pull quay.io/biocontainers/m6anet:2.1.0--pyhdfd78af_0
-        sudo docker run --rm -v /media:/media quay.io/biocontainers/m6anet:2.1.0--pyhdfd78af_0 m6anet dataprep --eventalign $basecalled_dirs/processing_nanopolish/eventalign.txt \
-        --out_dir $basecalled_dirs/processing_m6anet/output_dataprep --n_processes 10
+        sudo docker run --rm -v $mount_dir:$mount_dir quay.io/biocontainers/m6anet:2.1.0--pyhdfd78af_0 m6anet dataprep --eventalign $basecalled_dirs/processing_nanopolish/eventalign.txt \
+        --out_dir $basecalled_dirs/processing_m6anet/output_dataprep --n_processes $cores
 		end_m6Anet_dataprep=$(date +%s)
 					
         start_m6Anet_inference=$(date +%s)
-		sudo docker run --rm -v /media:/media --shm-size=900g quay.io/biocontainers/m6anet:2.1.0--pyhdfd78af_0 m6anet inference --input_dir $basecalled_dirs/processing_m6anet/output_dataprep/ \
-        --out_dir $basecalled_dirs/processing_m6anet/output_m6anet --n_processes 10 --num_iterations 1000
+		sudo docker run --rm -v $mount_dir:$mount_dir --shm-size=100g quay.io/biocontainers/m6anet:2.1.0--pyhdfd78af_0 m6anet inference --input_dir $basecalled_dirs/processing_m6anet/output_dataprep/ \
+        --out_dir $basecalled_dirs/processing_m6anet/output_m6anet --n_processes $cores --num_iterations 1000
 		end_m6Anet_inference=$(date +%s)
 
     else
-		echo "Error: Input folder do not exist."
+		echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Input folder do not exist."
 		exit 1
 	fi
 
